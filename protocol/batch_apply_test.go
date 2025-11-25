@@ -3,13 +3,67 @@ package protocol
 import (
 	"context"
 	"math/big"
+	"sort"
+	"sync"
 	"testing"
 
 	mtmem "github.com/iden3/go-merkletree-sql/v2/db/memory"
 )
 
-// NOTE: fakeGraphStore & newFakeGraphStore are defined in state_test.go.
-// We just reuse newFakeGraphStore() here.
+// testGraphStore is a simple in-memory GraphStore implementation used
+// only in this test file. It intentionally has a different name from the
+// fakeGraphStore in state_test.go to avoid redeclaration conflicts.
+type testGraphStore struct {
+	mu  sync.RWMutex
+	adj map[uint64]map[uint64]struct{}
+}
+
+func newTestGraphStore() *testGraphStore {
+	return &testGraphStore{
+		adj: make(map[uint64]map[uint64]struct{}),
+	}
+}
+
+func (g *testGraphStore) AddEdge(ctx context.Context, u, v uint64) error {
+	_ = ctx
+	if u == v {
+		// match your production semantics: disallow self edges
+		return nil
+	}
+	if u > v {
+		u, v = v, u
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.adj[u] == nil {
+		g.adj[u] = make(map[uint64]struct{})
+	}
+	if g.adj[v] == nil {
+		g.adj[v] = make(map[uint64]struct{})
+	}
+	g.adj[u][v] = struct{}{}
+	g.adj[v][u] = struct{}{}
+	return nil
+}
+
+func (g *testGraphStore) Neighbors(ctx context.Context, v uint64) ([]uint64, error) {
+	_ = ctx
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	m := g.adj[v]
+	if m == nil {
+		return nil, nil
+	}
+	out := make([]uint64, 0, len(m))
+	for n := range m {
+		out = append(out, n)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
 
 // TestApplyEdge_UpdatesGraphStoreAndGraphTree checks that:
 //   - ApplyEdge updates GraphStore adjacency
@@ -19,7 +73,7 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 
 	graphStorage := mtmem.NewMemoryStorage()
 	scoreStorage := mtmem.NewMemoryStorage()
-	gs := newFakeGraphStore()
+	gs := newTestGraphStore()
 
 	cfg := Config{
 		NumLevels: 8,
@@ -83,7 +137,7 @@ func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 
 	graphStorage := mtmem.NewMemoryStorage()
 	scoreStorage := mtmem.NewMemoryStorage()
-	gs := newFakeGraphStore()
+	gs := newTestGraphStore()
 
 	cfg := Config{
 		NumLevels: 8,
