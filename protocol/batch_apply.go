@@ -10,10 +10,13 @@ import (
 //   - For each edge, update GraphStore + GraphTree.
 //   - (ScoreTree updates are left as a TODO hook for your scoreUpdate logic.)
 //
-// This is called by the syncer (following on-chain batches).
+// GraphStore is taken from s.GraphStore (must be non-nil).
 func (s *State) ApplyBatch(ctx context.Context, b *Batch) error {
 	if b == nil {
 		return fmt.Errorf("protocol: ApplyBatch: nil Batch")
+	}
+	if s.GraphStore == nil {
+		return fmt.Errorf("protocol: ApplyBatch: nil State.GraphStore")
 	}
 
 	for _, e := range b.Edges {
@@ -22,9 +25,8 @@ func (s *State) ApplyBatch(ctx context.Context, b *Batch) error {
 		}
 	}
 
-	// TODO (optional): once you're confident in the off-chain logic, you can
-	// compare s.Graph.Root() and s.Score.Root() against b.NewGraphRoot /
-	// b.NewScoreRoot (converted to big.Int) and log/alert if they disagree.
+	// TODO (optional): compare s.Graph.Root() / s.Score.Root() with
+	// b.NewGraphRoot / b.NewScoreRoot for sanity checks.
 
 	return nil
 }
@@ -34,21 +36,16 @@ func (s *State) ApplyBatch(ctx context.Context, b *Batch) error {
 //   - record the edge in GraphStore
 //   - recompute NbrHash_G(u) and NbrHash_G(v)
 //   - update the corresponding leaves in the GraphTree
-//
-// Forger can call this repeatedly on an overlay State to compute
-// speculative newGraphRoot / newScoreRoot before submitting a batch.
 func (s *State) ApplyEdge(ctx context.Context, u, v uint64) error {
 	return s.applyGraphEdge(ctx, u, v)
 }
 
-// applyGraphEdge is the internal implementation used by both ApplyBatch and
-// ApplyEdge. It only touches the *graph* state; ScoreTree updates will be
-// wired in later once scoreUpdate(...) is plugged in.
+// internal implementation used by ApplyBatch / ApplyEdge.
 func (s *State) applyGraphEdge(ctx context.Context, u, v uint64) error {
-	if s.gs == nil {
-		return fmt.Errorf("protocol: State.gs (GraphStore) is nil")
+	if s.GraphStore == nil {
+		return fmt.Errorf("protocol: applyGraphEdge: nil State.GraphStore")
 	}
-	if err := s.gs.AddEdge(ctx, u, v); err != nil {
+	if err := s.GraphStore.AddEdge(ctx, u, v); err != nil {
 		return fmt.Errorf("AddEdge(%d,%d): %w", u, v, err)
 	}
 	if err := s.updateGraphLeaf(ctx, u); err != nil {
@@ -63,12 +60,12 @@ func (s *State) applyGraphEdge(ctx context.Context, u, v uint64) error {
 // updateGraphLeaf recomputes NbrHash_G(v) from the current GraphStore
 // and updates the corresponding leaf in the GraphTree.
 func (s *State) updateGraphLeaf(ctx context.Context, v uint64) error {
-	if s.gs == nil {
-		return fmt.Errorf("protocol: State.gs (GraphStore) is nil")
+	if s.GraphStore == nil {
+		return fmt.Errorf("protocol: updateGraphLeaf: nil State.GraphStore")
 	}
 
 	// Get sorted neighbors of v from the GraphStore.
-	nbrs, err := s.gs.Neighbors(ctx, v)
+	nbrs, err := s.GraphStore.Neighbors(ctx, v)
 	if err != nil {
 		return err
 	}
@@ -78,9 +75,9 @@ func (s *State) updateGraphLeaf(ctx context.Context, v uint64) error {
 	nbrData := buildNbrDataCompact(nbrs)
 	val := nbrArrayHasher(nbrData) // *big.Int
 
-	key := new(big.Int).SetUint64(v) // or bigFromUint64(v) if you prefer
+	key := new(big.Int).SetUint64(v)
 
-	// We dense-initialized the graph tree over [0..NumLeaves-1], so Update
+	// We dense-initialized the graph tree via NewState/InitGraphTree, so Update
 	// should always find the key. If it ever returns ErrKeyNotFound, that's
 	// a protocol bug and we just surface it.
 	if _, err := s.Graph.Update(ctx, key, val); err != nil {
@@ -88,4 +85,3 @@ func (s *State) updateGraphLeaf(ctx context.Context, v uint64) error {
 	}
 	return nil
 }
-
