@@ -95,7 +95,7 @@ func TestNbrArrayHasherMultiRound(t *testing.T) {
 
 	// Let's make deg=16, neighbours=[1..16].
 	nbrs := make([]uint64, 16)
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 16; i++ {
 		nbrs[i] = uint64(i + 1)
 	}
 	compact := buildNbrDataCompact(nbrs) // [16,1,2,...,16]
