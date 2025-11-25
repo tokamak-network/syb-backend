@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	poseidon "github.com/iden3/go-iden3-crypto/poseidon"
+	poseidon "github.com/iden3/go-iden3-crypto/v2/poseidon"
 )
 
 // ----------------------------
