@@ -142,3 +142,7 @@ func nbrArrayHasher(nbrData []uint64) *big.Int {
 	return acc
 }
 
+// bigFromUint64 is a tiny helper to build *big.Int from uint64.
+func bigFromUint64(x uint64) *big.Int {
+	return new(big.Int).SetUint64(x)
+}
