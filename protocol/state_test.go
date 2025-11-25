@@ -1,4 +1,3 @@
-// protocol/state_test.go
 package protocol
 
 import (
@@ -10,7 +9,6 @@ import (
 )
 
 // fakeGraphStore is a minimal GraphStore implementation for tests.
-// State.InitGraphTree doesn't actually use GraphStore, so this can be trivial.
 type fakeGraphStore struct{}
 
 func (f *fakeGraphStore) AddEdge(ctx context.Context, u, v uint64) error {
@@ -37,54 +35,49 @@ func TestNewState_BadConfig(t *testing.T) {
 	graphStore, scoreStore := newTestStorages(t)
 	gs := &fakeGraphStore{}
 
-	_, err := NewState(ctx, nil, scoreStore, gs, Config{
-		NumLevels: 24,
-		NumLeaves: 1 << 24,
+	// Valid-ish base config for comparison.
+	validCfg := Config{
+		NumLevels: 8,
+		NumLeaves: 1 << 8, // 256 leaves
 		MaxDegree: 30,
-	})
+	}
+
+	_, err := NewState(ctx, nil, scoreStore, gs, validCfg)
 	if err == nil {
 		t.Fatalf("expected error when graphStorage is nil, got nil")
 	}
 
-	_, err = NewState(ctx, graphStore, nil, gs, Config{
-		NumLevels: 24,
-		NumLeaves: 1 << 24,
-		MaxDegree: 30,
-	})
+	_, err = NewState(ctx, graphStore, nil, gs, validCfg)
 	if err == nil {
 		t.Fatalf("expected error when scoreStorage is nil, got nil")
 	}
 
-	_, err = NewState(ctx, graphStore, scoreStore, nil, Config{
-		NumLevels: 24,
-		NumLeaves: 1 << 24,
-		MaxDegree: 30,
-	})
+	_, err = NewState(ctx, graphStore, scoreStore, nil, validCfg)
 	if err == nil {
 		t.Fatalf("expected error when GraphStore is nil, got nil")
 	}
 
 	_, err = NewState(ctx, graphStore, scoreStore, gs, Config{
 		NumLevels: 0,
-		NumLeaves: 1 << 24,
-		MaxDegree: 30,
+		NumLeaves: validCfg.NumLeaves,
+		MaxDegree: validCfg.MaxDegree,
 	})
 	if err == nil {
 		t.Fatalf("expected error when NumLevels <= 0, got nil")
 	}
 
 	_, err = NewState(ctx, graphStore, scoreStore, gs, Config{
-		NumLevels: 24,
+		NumLevels: validCfg.NumLevels,
 		NumLeaves: 0,
-		MaxDegree: 30,
+		MaxDegree: validCfg.MaxDegree,
 	})
 	if err == nil {
 		t.Fatalf("expected error when NumLeaves == 0, got nil")
 	}
 
 	_, err = NewState(ctx, graphStore, scoreStore, gs, Config{
-		NumLevels: 24,
-		NumLeaves: 1 << 24,
+		NumLevels: validCfg.NumLevels,
+		NumLeaves: validCfg.NumLeaves,
 		MaxDegree: 0,
 	})
 	if err == nil {
@@ -95,14 +88,16 @@ func TestNewState_BadConfig(t *testing.T) {
 // TestNewState_DenseInit ensures that for a fresh graph tree (zero root),
 // NewState runs InitGraphTree and changes the graph root, while score root
 // remains zero.
+//
+// Here we use "production-like" config: NumLeaves = 1<<NumLevels.
 func TestNewState_DenseInit(t *testing.T) {
 	ctx := context.Background()
 	graphStore, scoreStore := newTestStorages(t)
 	gs := &fakeGraphStore{}
 
 	cfg := Config{
-		NumLevels: 4,      // small tree for test
-		NumLeaves: 1 << 4, // 16 leaves
+		NumLevels: 8,          // depth
+		NumLeaves: 1 << 8,     // 256 leaves, 0..255
 		MaxDegree: 30,
 	}
 
@@ -125,7 +120,7 @@ func TestNewState_DenseInit(t *testing.T) {
 
 	// Now build protocol.State on top of fresh storages. This should:
 	//  - Detect zero graph root,
-	//  - Run InitGraphTree (dense init),
+	//  - Run InitGraphTree (dense init over 0..NumLeaves-1),
 	//  - Commit a non-zero graph root.
 	state, err := NewState(ctx, graphStore, scoreStore, gs, cfg)
 	if err != nil {
@@ -148,15 +143,16 @@ func TestNewState_DenseInit(t *testing.T) {
 }
 
 // TestInitGraphTree_Idempotent checks that re-running InitGraphTree on the
-// same State and range doesn't change the root (thanks to duplicate handling).
+// same State and full [0..NumLeaves-1] range doesn't change the root
+// (thanks to duplicate handling).
 func TestInitGraphTree_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	graphStore, scoreStore := newTestStorages(t)
 	gs := &fakeGraphStore{}
 
 	cfg := Config{
-		NumLevels: 4,
-		NumLeaves: 8,
+		NumLevels: 8,
+		NumLeaves: 1 << 8, // 256 leaves
 		MaxDegree: 30,
 	}
 
@@ -170,7 +166,7 @@ func TestInitGraphTree_Idempotent(t *testing.T) {
 
 	// Re-run InitGraphTree with the same numLeaves. This should:
 	//  - Try to add entries that already exist,
-	//  - Hit ErrEntryIndexAlreadyExists,
+	//  - Hit ErrEntryIndexAlreadyExists for each,
 	//  - Ignore those and leave the tree unchanged.
 	if err := state.InitGraphTree(ctx, cfg.NumLeaves); err != nil {
 		t.Fatalf("InitGraphTree second run failed: %v", err)
