@@ -105,7 +105,20 @@ func (f *Forger) Run(ctx context.Context) error {
 		//       * build zk inputs, generate proof
 		//       * send submitBatch tx
 		//
-		// For now just sleep.
+		
+		overlay := stateSnapshotOrOverlay(baseState)
+		
+		for _, e := range edgesFromUnforgedQueue {
+		    if err := overlay.ApplyEdge(ctx, e.Ilo, e.Ihi); err != nil {
+		        // handle error
+		    }
+		}
+		
+		// now overlay.Graph.Root() is your speculative newGraphRoot
+		// overlay.Score.Root() will be your newScoreRoot once scoreUpdate is wired in.
+
+
+		
 		time.Sleep(f.cfg.PollInterval)
 	}
 }
