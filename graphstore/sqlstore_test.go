@@ -77,5 +77,3 @@ func TestSQLStore_AddEdgeAndNeighbors(t *testing.T) {
         }
     }
 }
-
-}
