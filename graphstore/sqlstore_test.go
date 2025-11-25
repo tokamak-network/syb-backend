@@ -30,36 +30,52 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 func TestSQLStore_AddEdgeAndNeighbors(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	defer db.Close()
+    ctx := context.Background()
+    db := newTestDB(t)
+    defer db.Close()
 
-	s := NewSQLStore(db)
+    s := NewSQLStore(db)
 
-	// same triangle test as MemoryStore
-	_ = s.AddEdge(ctx, 1, 2)
-	_ = s.AddEdge(ctx, 2, 3)
-	_ = s.AddEdge(ctx, 3, 1)
-	_ = s.AddEdge(ctx, 2, 1) // dup
-	_ = s.AddEdge(ctx, 1, 1) // self
+    // same triangle test as MemoryStore
+    if err := s.AddEdge(ctx, 1, 2); err != nil {
+        t.Fatalf("AddEdge(1,2): %v", err)
+    }
+    if err := s.AddEdge(ctx, 2, 3); err != nil {
+        t.Fatalf("AddEdge(2,3): %v", err)
+    }
+    if err := s.AddEdge(ctx, 3, 1); err != nil {
+        t.Fatalf("AddEdge(3,1): %v", err)
+    }
+    if err := s.AddEdge(ctx, 2, 1); err != nil { // dup
+        t.Fatalf("AddEdge(2,1) dup: %v", err)
+    }
 
-	cases := []struct {
-		v    uint64
-		want []uint64
-	}{
-		{1, []uint64{2, 3}},
-		{2, []uint64{1, 3}},
-		{3, []uint64{1, 2}},
-		{4, nil},
-	}
+    // self-edge MUST error
+    if err := s.AddEdge(ctx, 1, 1); err == nil {
+        t.Fatalf("expected error on self-edge, got nil")
+        // optionally:
+        // if !strings.Contains(err.Error(), "self edge not allowed") { ... }
+    }
 
-	for _, tc := range cases {
-		got, err := s.Neighbors(ctx, tc.v)
-		if err != nil {
-			t.Fatalf("Neighbors(%d) err: %v", tc.v, err)
-		}
-		if !reflect.DeepEqual(got, tc.want) {
-			t.Fatalf("Neighbors(%d) = %v, want %v", tc.v, got, tc.want)
-		}
-	}
+    cases := []struct {
+        v    uint64
+        want []uint64
+    }{
+        {1, []uint64{2, 3}},
+        {2, []uint64{1, 3}},
+        {3, []uint64{1, 2}},
+        {4, nil},
+    }
+
+    for _, tc := range cases {
+        got, err := s.Neighbors(ctx, tc.v)
+        if err != nil {
+            t.Fatalf("Neighbors(%d) err: %v", tc.v, err)
+        }
+        if !reflect.DeepEqual(got, tc.want) {
+            t.Fatalf("Neighbors(%d) = %v, want %v", tc.v, got, tc.want)
+        }
+    }
+}
+
 }
