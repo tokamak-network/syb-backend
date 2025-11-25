@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	mt "github.com/iden3/go-merkletree-sql" 
+	mt "github.com/iden3/go-merkletree-sql/v2" 
 )
 
 // Config controls Merkle layout & dense init.
