@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	poseidon "github.com/iden3/go-iden3-crypto/poseidon"
+	poseidon "github.com/iden3/go-iden3-crypto/v2/poseidon"
 )
 
 // TestPadLenFromMaxDegreeAndZeroArray checks the math for padLen and zeroArray.
@@ -143,8 +143,7 @@ func TestNbrArrayHasherMultiRound(t *testing.T) {
 	}
 }
 
-// TestNbrArrayHasherPanicsOnBadLen makes sure we catch invalid lengths
-// (so we don't accidentally call it with malformed arrays).
+// TestNbrArrayHasherPanicsOnBadLen makes sure we catch invalid lengths.
 func TestNbrArrayHasherPanicsOnBadLen(t *testing.T) {
 	assertPanics := func(name string, f func()) {
 		t.Helper()
