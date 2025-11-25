@@ -1,3 +1,4 @@
+// protocol/state.go
 package protocol
 
 import (
@@ -5,7 +6,7 @@ import (
 	"errors"
 	"log"
 
-	mt "github.com/iden3/go-merkletree-sql/v2" 
+	mt "github.com/iden3/go-merkletree-sql/v2"
 )
 
 // Config controls Merkle layout & dense init.
@@ -15,8 +16,8 @@ type Config struct {
 	MaxDegree uint64 // max neighbors per node (maxDeg)
 }
 
-// State wraps the two Merkle trees: GraphTree + ScoreTree,
-// plus a GraphStore for the underlying graph adjacency.
+// State wraps the two Merkle trees (GraphTree + ScoreTree)
+// plus a GraphStore for the underlying adjacency.
 type State struct {
 	Graph      *mt.MerkleTree
 	Score      *mt.MerkleTree
