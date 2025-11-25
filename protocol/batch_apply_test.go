@@ -3,97 +3,33 @@ package protocol
 import (
 	"context"
 	"math/big"
-	"sort"
-	"sync"
 	"testing"
 
-	mt "github.com/iden3/go-merkletree-sql/v2"
 	mtmem "github.com/iden3/go-merkletree-sql/v2/db/memory"
 )
 
-// ---- test helpers ----
+// NOTE: fakeGraphStore & newFakeGraphStore are defined in state_test.go.
+// We just reuse newFakeGraphStore() here.
 
-// fakeGraphStore is a simple in-memory GraphStore implementation used only in tests.
-type fakeGraphStore struct {
-	mu  sync.RWMutex
-	adj map[uint64]map[uint64]struct{}
-}
-
-func newFakeGraphStore() *fakeGraphStore {
-	return &fakeGraphStore{
-		adj: make(map[uint64]map[uint64]struct{}),
-	}
-}
-
-func (f *fakeGraphStore) AddEdge(ctx context.Context, u, v uint64) error {
-	_ = ctx
-	if u == v {
-		// match your production semantics: disallow self edges
-		return nil
-	}
-	if f.adj[u] == nil {
-		f.adj[u] = make(map[uint64]struct{})
-	}
-	if f.adj[v] == nil {
-		f.adj[v] = make(map[uint64]struct{})
-	}
-	f.adj[u][v] = struct{}{}
-	f.adj[v][u] = struct{}{}
-	return nil
-}
-
-func (f *fakeGraphStore) Neighbors(ctx context.Context, v uint64) ([]uint64, error) {
-	_ = ctx
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-
-	m := f.adj[v]
-	if m == nil {
-		return nil, nil
-	}
-	out := make([]uint64, 0, len(m))
-	for n := range m {
-		out = append(out, n)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out, nil
-}
-
-func newTestMerkleTree(t *testing.T, numLevels int) *mt.MerkleTree {
-	t.Helper()
-	st := mtmem.NewMemoryStorage()
-	mtree, err := mt.NewMerkleTree(context.Background(), st, numLevels)
-	if err != nil {
-		t.Fatalf("NewMerkleTree: %v", err)
-	}
-	return mtree
-}
-
-// ---- tests ----
-
+// TestApplyEdge_UpdatesGraphStoreAndGraphTree checks that:
+//   - ApplyEdge updates GraphStore adjacency
+//   - ApplyEdge updates GraphTree leaves for both endpoints
 func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 	ctx := context.Background()
 
-	const (
-		numLevels = 8   // enough depth; see previous tests about maxLevels vs leaves
-		maxDegree = 30
-		numLeaves = 256
-	)
-
-	graphMT := newTestMerkleTree(t, numLevels)
-	scoreMT := newTestMerkleTree(t, numLevels)
-
+	graphStorage := mtmem.NewMemoryStorage()
+	scoreStorage := mtmem.NewMemoryStorage()
 	gs := newFakeGraphStore()
 
-	st := &State{
-		Graph: graphMT,
-		Score: scoreMT,
-		gs:    gs,
+	cfg := Config{
+		NumLevels: 8,
+		NumLeaves: 256,
+		MaxDegree: 30,
 	}
 
-	// Dense-init the GraphTree with zero neighbor arrays.
-	if err := st.InitGraphTree(ctx, maxDegree, numLeaves); err != nil {
-		t.Fatalf("InitGraphTree: %v", err)
+	st, err := NewState(ctx, graphStorage, scoreStorage, gs, cfg)
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
 	}
 
 	// Apply a single edge {1,2}.
@@ -101,7 +37,7 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 		t.Fatalf("ApplyEdge(1,2): %v", err)
 	}
 
-	// Check fakeGraphStore adjacency first.
+	// Check adjacency in GraphStore.
 	n1, err := gs.Neighbors(ctx, 1)
 	if err != nil {
 		t.Fatalf("gs.Neighbors(1): %v", err)
@@ -110,6 +46,7 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gs.Neighbors(2): %v", err)
 	}
+
 	if len(n1) != 1 || n1[0] != 2 {
 		t.Fatalf("neighbors(1) = %v, want [2]", n1)
 	}
@@ -117,8 +54,7 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 		t.Fatalf("neighbors(2) = %v, want [1]", n2)
 	}
 
-	// Now verify that the GraphTree leaf values for 1 and 2 match the
-	// expected NbrHash_G(v) computed via nbrArrayHasher(buildNbrDataCompact(...)).
+	// Verify GraphTree leaf values for 1 and 2.
 	checkLeaf := func(v uint64, expectedNbrs []uint64) {
 		t.Helper()
 		key := new(big.Int).SetUint64(v)
@@ -140,28 +76,24 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 	checkLeaf(2, []uint64{1})
 }
 
+// TestApplyBatch_UsesApplyEdge ensures ApplyBatch iterates over all edges
+// and has the same effects as calling ApplyEdge for each.
 func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 	ctx := context.Background()
 
-	const (
-		numLevels = 8
-		maxDegree = 30
-		numLeaves = 256
-	)
-
-	graphMT := newTestMerkleTree(t, numLevels)
-	scoreMT := newTestMerkleTree(t, numLevels)
-
+	graphStorage := mtmem.NewMemoryStorage()
+	scoreStorage := mtmem.NewMemoryStorage()
 	gs := newFakeGraphStore()
 
-	st := &State{
-		Graph: graphMT,
-		Score: scoreMT,
-		gs:    gs,
+	cfg := Config{
+		NumLevels: 8,
+		NumLeaves: 256,
+		MaxDegree: 30,
 	}
 
-	if err := st.InitGraphTree(ctx, maxDegree, numLeaves); err != nil {
-		t.Fatalf("InitGraphTree: %v", err)
+	st, err := NewState(ctx, graphStorage, scoreStorage, gs, cfg)
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
 	}
 
 	// Construct a Batch with edges: {1,2}, {2,3}.
@@ -178,7 +110,7 @@ func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 		t.Fatalf("ApplyBatch: %v", err)
 	}
 
-	// gs adjacency expectations:
+	// Expected adjacency:
 	// 1: {2}
 	// 2: {1,3}
 	// 3: {2}
@@ -206,7 +138,7 @@ func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 		}
 	}
 
-	// Spot-check GraphTree leaves for 2 and 3.
+	// Spot-check GraphTree for vertex 2 and 3.
 	checkLeaf := func(v uint64, expectedNbrs []uint64) {
 		t.Helper()
 		key := new(big.Int).SetUint64(v)
