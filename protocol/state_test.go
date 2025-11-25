@@ -100,7 +100,7 @@ func TestNewState_DenseInit(t *testing.T) {
 	gs := &fakeGraphStore{}
 
 	cfg := Config{
-		NumLevels: 4,  // D+1 where D=4
+		NumLevels: 5,  // D+1 where D=4
 		NumLeaves: 16, // 2^D leaves, indices 0..15
 		MaxDegree: 30,
 	}
