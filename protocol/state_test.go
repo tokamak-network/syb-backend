@@ -1,11 +1,12 @@
+// protocol/state_test.go
 package protocol
 
 import (
 	"context"
 	"testing"
 
-	coredb "github.com/iden3/go-iden3-core/v2/db"
 	mt "github.com/iden3/go-merkletree-sql/v2"
+	memdb "github.com/iden3/go-merkletree-sql/v2/db/memory"
 )
 
 // fakeGraphStore is a minimal GraphStore implementation for tests.
@@ -24,9 +25,8 @@ func (f *fakeGraphStore) Neighbors(ctx context.Context, v uint64) ([]uint64, err
 func newTestStorages(t *testing.T) (mt.Storage, mt.Storage) {
 	t.Helper()
 
-	// Using iden3-core in-memory DB. Adjust if you use a different storage.
-	graphStore := coredb.NewMemoryStorage()
-	scoreStore := coredb.NewMemoryStorage()
+	graphStore := memdb.NewMemoryStorage()
+	scoreStore := memdb.NewMemoryStorage()
 
 	return graphStore, scoreStore
 }
