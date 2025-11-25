@@ -35,10 +35,13 @@ func TestNewState_BadConfig(t *testing.T) {
 	graphStore, scoreStore := newTestStorages(t)
 	gs := &fakeGraphStore{}
 
-	// Valid-ish base config for comparison.
+	// "Production-ish" base config:
+	// We want to insert up to 2^D leaves with D bits of path.
+	// With iden3 SMT, pushLeaf only uses (maxLevels-1) bits to distinguish keys,
+	// so we set maxLevels = D+1. Here: D=4 -> maxLevels=5, NumLeaves=16.
 	validCfg := Config{
-		NumLevels: 8,
-		NumLeaves: 1 << 8, // 256 leaves
+		NumLevels: 5,  // D+1
+		NumLeaves: 16, // 2^D
 		MaxDegree: 30,
 	}
 
@@ -89,15 +92,16 @@ func TestNewState_BadConfig(t *testing.T) {
 // NewState runs InitGraphTree and changes the graph root, while score root
 // remains zero.
 //
-// Here we use "production-like" config: NumLeaves = 1<<NumLevels.
+// Here we use "dense" 2^D leaves with maxLevels = D+1 to match iden3's
+// pushLeaf behaviour (it only uses maxLevels-1 bits to distinguish keys).
 func TestNewState_DenseInit(t *testing.T) {
 	ctx := context.Background()
 	graphStore, scoreStore := newTestStorages(t)
 	gs := &fakeGraphStore{}
 
 	cfg := Config{
-		NumLevels: 8,          // depth
-		NumLeaves: 1 << 8,     // 256 leaves, 0..255
+		NumLevels: 5,  // D+1 where D=4
+		NumLeaves: 16, // 2^D leaves, indices 0..15
 		MaxDegree: 30,
 	}
 
@@ -151,8 +155,8 @@ func TestInitGraphTree_Idempotent(t *testing.T) {
 	gs := &fakeGraphStore{}
 
 	cfg := Config{
-		NumLevels: 8,
-		NumLeaves: 1 << 8, // 256 leaves
+		NumLevels: 5,
+		NumLeaves: 16, // same 2^D range
 		MaxDegree: 30,
 	}
 
