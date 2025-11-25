@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 
-	mt "github.com/iden3/go-merkletree-sql" // or your local path: "github.com/you/syb-backend/merkletree"
+	mt "github.com/iden3/go-merkletree-sql" 
 )
 
 // Config controls Merkle layout & dense init.
