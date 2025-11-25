@@ -75,9 +75,11 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 	scoreStorage := mtmem.NewMemoryStorage()
 	gs := newTestGraphStore()
 
+	// IMPORTANT: use a (NumLevels, NumLeaves) pair that works with iden3:
+	// capacity ≈ 2^(NumLevels-1). Here: 2^(5-1) = 16 leaves.
 	cfg := Config{
-		NumLevels: 8,
-		NumLeaves: 256,
+		NumLevels: 5,
+		NumLeaves: 16,
 		MaxDegree: 30,
 	}
 
@@ -140,8 +142,8 @@ func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 	gs := newTestGraphStore()
 
 	cfg := Config{
-		NumLevels: 8,
-		NumLeaves: 256,
+		NumLevels: 5,
+		NumLeaves: 16,
 		MaxDegree: 30,
 	}
 
