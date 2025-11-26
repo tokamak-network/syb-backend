@@ -119,8 +119,10 @@ func TestApplyEdge_UpdatesGraphStoreAndGraphTree(t *testing.T) {
 			t.Fatalf("Graph.Get(%d): %v", v, err)
 		}
 
-		nbrData := buildNbrDataCompact(expectedNbrs)
-		wantHash := nbrArrayHasher(nbrData)
+
+		compact := buildNbrDataCompact(expectedNbrs)
+        padded := padNbrData(compact, cfg.MaxDegree)
+		wantHash := nbrArrayHasher(padded)
 
 		if val.Cmp(wantHash) != 0 {
 			t.Fatalf("Graph leaf value for %d mismatch:\n got  %s\n want %s",
@@ -203,8 +205,9 @@ func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 			t.Fatalf("Graph.Get(%d): %v", v, err)
 		}
 
-		nbrData := buildNbrDataCompact(expectedNbrs)
-		wantHash := nbrArrayHasher(nbrData)
+        compact := buildNbrDataCompact(expectedNbrs)
+        padded := padNbrData(compact, cfg.MaxDegree)
+        wantHash := nbrArrayHasher(padded)
 
 		if val.Cmp(wantHash) != 0 {
 			t.Fatalf("Graph leaf value for %d mismatch:\n got  %s\n want %s",
