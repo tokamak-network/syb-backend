@@ -1,4 +1,3 @@
-// syncer/syncer.go
 package syncer
 
 import (
@@ -16,8 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	mt "github.com/you/syb-backend/merkletree"
-	"github.com/you/syb-backend/protocol"
+	//mt "github.com/you/syb-backend/merkletree"
+	//"github.com/you/syb-backend/protocol"
 )
 
 // Config holds runtime configuration for the synchronizer daemon.
