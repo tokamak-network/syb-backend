@@ -248,7 +248,6 @@ func TestOverlay_EndToEnd_StateAndStorage(t *testing.T) {
 	}
 
 	overlayGraphRootAfter := overlayState.Graph.Root()
-	overlayScoreRootAfter := overlayState.Score.Root()
 	baseGraphRootAfter := baseState.Graph.Root()
 	baseScoreRootAfter := baseState.Score.Root()
 
