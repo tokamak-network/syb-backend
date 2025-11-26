@@ -1,0 +1,183 @@
+package protocol
+
+import (
+	"context"
+	"testing"
+
+	mt "github.com/iden3/go-merkletree-sql/v2"
+	memdb "github.com/iden3/go-merkletree-sql/v2/db/memory"
+)
+
+// fakeGraphStore is a minimal GraphStore implementation for tests.
+type fakeGraphStore struct{}
+
+func (f *fakeGraphStore) AddEdge(ctx context.Context, u, v uint64) error {
+	return nil
+}
+
+func (f *fakeGraphStore) Neighbors(ctx context.Context, v uint64) ([]uint64, error) {
+	return nil, nil
+}
+
+// newTestStorages creates in-memory SMT storages for graph & score trees.
+func newTestStorages(t *testing.T) (mt.Storage, mt.Storage) {
+	t.Helper()
+
+	graphStore := memdb.NewMemoryStorage()
+	scoreStore := memdb.NewMemoryStorage()
+
+	return graphStore, scoreStore
+}
+
+// TestNewState_BadConfig verifies NewState fails on obviously bad configs.
+func TestNewState_BadConfig(t *testing.T) {
+	ctx := context.Background()
+	graphStore, scoreStore := newTestStorages(t)
+	gs := &fakeGraphStore{}
+
+	// "Production-ish" base config:
+	// We want to insert up to 2^D leaves with D bits of path.
+	// With iden3 SMT, pushLeaf only uses (maxLevels-1) bits to distinguish keys,
+	// so we set maxLevels = D+1. Here: D=4 -> maxLevels=5, NumLeaves=16.
+	validCfg := Config{
+		NumLevels: 5,  // D+1
+		NumLeaves: 16, // 2^D
+		MaxDegree: 30,
+	}
+
+	_, err := NewState(ctx, nil, scoreStore, gs, validCfg)
+	if err == nil {
+		t.Fatalf("expected error when graphStorage is nil, got nil")
+	}
+
+	_, err = NewState(ctx, graphStore, nil, gs, validCfg)
+	if err == nil {
+		t.Fatalf("expected error when scoreStorage is nil, got nil")
+	}
+
+	_, err = NewState(ctx, graphStore, scoreStore, nil, validCfg)
+	if err == nil {
+		t.Fatalf("expected error when GraphStore is nil, got nil")
+	}
+
+	_, err = NewState(ctx, graphStore, scoreStore, gs, Config{
+		NumLevels: 0,
+		NumLeaves: validCfg.NumLeaves,
+		MaxDegree: validCfg.MaxDegree,
+	})
+	if err == nil {
+		t.Fatalf("expected error when NumLevels <= 0, got nil")
+	}
+
+	_, err = NewState(ctx, graphStore, scoreStore, gs, Config{
+		NumLevels: validCfg.NumLevels,
+		NumLeaves: 0,
+		MaxDegree: validCfg.MaxDegree,
+	})
+	if err == nil {
+		t.Fatalf("expected error when NumLeaves == 0, got nil")
+	}
+
+	_, err = NewState(ctx, graphStore, scoreStore, gs, Config{
+		NumLevels: validCfg.NumLevels,
+		NumLeaves: validCfg.NumLeaves,
+		MaxDegree: 0,
+	})
+	if err == nil {
+		t.Fatalf("expected error when MaxDegree == 0, got nil")
+	}
+}
+
+// TestNewState_DenseInit ensures that for a fresh graph tree (zero root),
+// NewState runs InitGraphTree and changes the graph root, while score root
+// remains zero.
+//
+// Here we use "dense" 2^D leaves with maxLevels = D+1 to match iden3's
+// pushLeaf behaviour (it only uses maxLevels-1 bits to distinguish keys).
+func TestNewState_DenseInit(t *testing.T) {
+	ctx := context.Background()
+	graphStore, scoreStore := newTestStorages(t)
+	gs := &fakeGraphStore{}
+
+	cfg := Config{
+		NumLevels: 5,  // D+1 where D=4
+		NumLeaves: 16, // 2^D leaves, indices 0..15
+		MaxDegree: 30,
+	}
+
+	// Sanity: a fresh tree created directly should have zero root.
+	graphTree, err := mt.NewMerkleTree(ctx, graphStore, cfg.NumLevels)
+	if err != nil {
+		t.Fatalf("NewMerkleTree(graph) failed: %v", err)
+	}
+	if !hashesEqual(graphTree.Root(), &mt.HashZero) {
+		t.Fatalf("expected fresh graphTree root to be HashZero")
+	}
+
+	scoreTree, err := mt.NewMerkleTree(ctx, scoreStore, cfg.NumLevels)
+	if err != nil {
+		t.Fatalf("NewMerkleTree(score) failed: %v", err)
+	}
+	if !hashesEqual(scoreTree.Root(), &mt.HashZero) {
+		t.Fatalf("expected fresh scoreTree root to be HashZero")
+	}
+
+	// Now build protocol.State on top of fresh storages. This should:
+	//  - Detect zero graph root,
+	//  - Run InitGraphTree (dense init over 0..NumLeaves-1),
+	//  - Commit a non-zero graph root.
+	state, err := NewState(ctx, graphStore, scoreStore, gs, cfg)
+	if err != nil {
+		t.Fatalf("NewState failed: %v", err)
+	}
+
+	if state.Graph == nil || state.Score == nil {
+		t.Fatalf("state.Graph or state.Score is nil")
+	}
+
+	if hashesEqual(state.Graph.Root(), &mt.HashZero) {
+		t.Fatalf("expected graph root to be non-zero after dense init")
+	}
+
+	// We didn't touch the score tree during NewState, so its root
+	// should still be zero.
+	if !hashesEqual(state.Score.Root(), &mt.HashZero) {
+		t.Fatalf("expected score root to remain HashZero")
+	}
+}
+
+// TestInitGraphTree_Idempotent checks that re-running InitGraphTree on the
+// same State and full [0..NumLeaves-1] range doesn't change the root
+// (thanks to duplicate handling).
+func TestInitGraphTree_Idempotent(t *testing.T) {
+	ctx := context.Background()
+	graphStore, scoreStore := newTestStorages(t)
+	gs := &fakeGraphStore{}
+
+	cfg := Config{
+		NumLevels: 5,
+		NumLeaves: 16, // same 2^D range
+		MaxDegree: 30,
+	}
+
+	state, err := NewState(ctx, graphStore, scoreStore, gs, cfg)
+	if err != nil {
+		t.Fatalf("NewState failed: %v", err)
+	}
+
+	// Capture the current graph root.
+	root1 := state.Graph.Root()
+
+	// Re-run InitGraphTree with the same numLeaves. This should:
+	//  - Try to add entries that already exist,
+	//  - Hit ErrEntryIndexAlreadyExists for each,
+	//  - Ignore those and leave the tree unchanged.
+	if err := state.InitGraphTree(ctx, cfg.NumLeaves); err != nil {
+		t.Fatalf("InitGraphTree second run failed: %v", err)
+	}
+
+	root2 := state.Graph.Root()
+	if !hashesEqual(root1, root2) {
+		t.Fatalf("expected graph root to remain unchanged on second InitGraphTree run")
+	}
+}
