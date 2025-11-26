@@ -1,4 +1,3 @@
-// forger/forger.go
 package forger
 
 import (
@@ -10,8 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	mt "github.com/tokamak-network/syb-backend/merkletree"
-	"github.com/tokamak-network/syb-backend/protocol"
+	//mt "github.com/tokamak-network/syb-backend/merkletree"
+	//"github.com/tokamak-network/syb-backend/protocol"
 )
 
 // Config holds configuration for the forger daemon.
