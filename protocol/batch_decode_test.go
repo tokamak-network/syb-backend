@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"encoding/binary"
-	"math/big"
 	"reflect"
 	"testing"
 
