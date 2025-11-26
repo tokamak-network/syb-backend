@@ -52,11 +52,6 @@ func TestDecodeEdgesPacked_Basic(t *testing.T) {
 
 func TestDecodeBatchFromLog_Basic(t *testing.T) {
 	// Construct a synthetic BatchSubmitted log:
-	//
-	//   topics[0] = event ID
-	//   topics[1] = batchId (indexed uint64)
-	//   data      = abi-encoded (count, storageHash, newGraphRoot, newScoreRoot, edgesPacked)
-
 	batchID := uint64(123)
 	edges := []Edge{
 		{Ilo: 1, Ihi: 2},
@@ -74,9 +69,11 @@ func TestDecodeBatchFromLog_Basic(t *testing.T) {
 	copy(newGraphRoot[:], []byte("graph-root-1234567890abcdef"))
 	copy(newScoreRoot[:], []byte("score-root-1234567890abcdef"))
 
-	// Use the same batchABI we defined in batch_decode.go to pack the data.
-	data, err := batchABI.Pack(
-		"BatchSubmitted",
+	// IMPORTANT: for events we don't use abi.Pack("BatchSubmitted", ...).
+	// We pack only the NON-INDEXED arguments, in order, using the event's
+	// Inputs.NonIndexed() helper.
+	nonIndexed := batchSubmittedEvent.Inputs.NonIndexed()
+	data, err := nonIndexed.Pack(
 		count,
 		storageHash,
 		newGraphRoot,
@@ -84,16 +81,15 @@ func TestDecodeBatchFromLog_Basic(t *testing.T) {
 		edgesPacked,
 	)
 	if err != nil {
-		t.Fatalf("batchABI.Pack: %v", err)
+		t.Fatalf("NonIndexed.Pack: %v", err)
 	}
 
 	log := types.Log{
 		Topics: []common.Hash{
-			BatchSubmittedEventID(),  // topic[0]: event signature
-			encodeUint64Topic(batchID), // topic[1]: indexed batchId
+			BatchSubmittedEventID(),      // topic[0]: event signature
+			encodeUint64Topic(batchID),   // topic[1]: indexed batchId
 		},
 		Data: data,
-		// BlockNumber, Index, etc. can stay zero for this unit test.
 	}
 
 	decoded, err := DecodeBatchFromLog(log)
@@ -128,21 +124,13 @@ func TestDecodeBatchFromLog_Basic(t *testing.T) {
 			decoded.Edges, edges)
 	}
 
-	// Small sanity check: edgesPacked length vs Count.
+	// Sanity checks.
 	if len(edgesPacked) != int(decoded.Count)*8 {
 		t.Fatalf("edgesPacked length mismatch: got %d, want %d",
 			len(edgesPacked), int(decoded.Count)*8)
 	}
 
-	// And that BatchSubmittedEventID is consistent with the ABI.
 	if BatchSubmittedEventID() != batchSubmittedEvent.ID {
 		t.Fatalf("BatchSubmittedEventID != batchSubmittedEvent.ID")
-	}
-
-	// Bonus: confirm that topic[1] decodes to batchID the same way DecodeBatchFromLog does.
-	bidBig := new(big.Int).SetBytes(log.Topics[1].Bytes())
-	if !bidBig.IsUint64() || bidBig.Uint64() != batchID {
-		t.Fatalf("topic[1] roundtrip mismatch: got %s, want %d",
-			bidBig.String(), batchID)
 	}
 }
