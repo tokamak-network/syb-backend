@@ -9,8 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	//mt "github.com/tokamak-network/syb-backend/merkletree"
-	//"github.com/tokamak-network/syb-backend/protocol"
+	mt "github.com/iden3/go-merkletree-sql/v2"
+	"syb-backend/protocol"
 )
 
 // Config holds configuration for the forger daemon.
@@ -24,7 +24,7 @@ type Config struct {
 	ScoreStorage mt.Storage // Merkle storage for ScoreTree
 
 	// BaseGraphStore is the canonical graph backend (usually SQLStore).
-	// forger.New will wrap this in a protocol.OverlayStore so that
+	// forger.New will wrap this in an OverlayGraphStore so that
 	// speculative edges live only in-memory.
 	BaseGraphStore protocol.GraphStore
 
@@ -39,12 +39,12 @@ type Config struct {
 type Forger struct {
 	cfg   Config
 	cli   *ethclient.Client
-	state *protocol.State // State built on top of OverlayStore
+	state *protocol.State // State built on top of OverlayGraphStore
 }
 
-// New constructs a Forger and loads protocol.State using an OverlayStore:
-//   - BaseGraphStore (e.g. SQLStore) is wrapped in protocol.NewOverlayStore
-//   - Overlay is an in-memory MemoryStore for speculative edges
+// New constructs a Forger and loads protocol.State using an OverlayGraphStore:
+//   - BaseGraphStore (e.g. SQLStore) is wrapped in NewOverlayGraphStore
+//   - Speculative edges live only in the overlay; base store is unchanged.
 func New(ctx context.Context, cfg Config) (*Forger, error) {
 	if cfg.GraphStorage == nil || cfg.ScoreStorage == nil {
 		return nil, errors.New("GraphStorage and ScoreStorage must be provided")
@@ -63,9 +63,12 @@ func New(ctx context.Context, cfg Config) (*Forger, error) {
 
 	// Wrap the base graph store with an overlay for speculation.
 	baseGS := cfg.BaseGraphStore
-	overlayGS := protocol.NewOverlayStore(baseGS)
+	overlayGS := NewOverlayGraphStore(baseGS)
 
 	// Build protocol.State using the overlay GraphStore.
+	// NOTE: this still uses the same underlying Merkle storages (GraphStorage
+	// and ScoreStorage), so Merkle updates are canonical. A Merkle overlay
+	// would be a separate step (overlay mt.Storage) if/when you want that.
 	state, err := protocol.NewState(
 		ctx,
 		cfg.GraphStorage,
@@ -85,7 +88,13 @@ func New(ctx context.Context, cfg Config) (*Forger, error) {
 }
 
 // Run is the main loop of the forger.
-// TODO: implement unforged queue scanning, batch construction, proofs, submitBatch.
+//
+// CURRENTLY: stub implementation. It just logs and sleeps until ctx is cancelled.
+// Later you will:
+//   - read pending unforged edges from the contract
+//   - construct a *fresh* overlay (GraphStore + possibly Merkle storage)
+//   - apply edges via protocol.State (ApplyEdge/ApplyBatch)
+//   - generate zk proofs and call submitBatch.
 func (f *Forger) Run(ctx context.Context) error {
 	log.Println("[forger] starting forger loop (stub)")
 
@@ -97,27 +106,20 @@ func (f *Forger) Run(ctx context.Context) error {
 		}
 
 		// TODO:
-		//   - read pending unforged edges from contract (nextEdgeId, lastForgedId)
-		//   - if >= ForgerBatchSize, build a candidate batch:
-		//       * use f.state (which uses OverlayStore) to apply edges
-		//         speculatively via protocol.ApplyBatch-like helpers
-		//       * build zk inputs, generate proof
-		//       * send submitBatch tx
+		//   1. Query unforged queue (nextEdgeId, lastForgedId) from contract.
+		//   2. If >= f.cfg.ForgerBatchSize, build ONE speculative overlay state:
+		//        - newOverlayGS := NewOverlayGraphStore(f.cfg.BaseGraphStore)
+		//        - newOverlayMtStorage for graph/score if you add Merkle overlays
+		//        - overlayState := protocol.NewState(...) using the overlays,
+		//          but *reusing* the current roots as starting point.
+		//   3. Apply edges to overlayState via ApplyEdge / ApplyBatch.
+		//   4. Read overlayState.Graph.Root() / overlayState.Score.Root()
+		//      as new roots for submitBatch.
+		//   5. Generate proof, send tx.
 		//
-		
-		overlay := stateSnapshotOrOverlay(baseState)
-		
-		for _, e := range edgesFromUnforgedQueue {
-		    if err := overlay.ApplyEdge(ctx, e.Ilo, e.Ihi); err != nil {
-		        // handle error
-		    }
-		}
-		
-		// now overlay.Graph.Root() is your speculative newGraphRoot
-		// overlay.Score.Root() will be your newScoreRoot once scoreUpdate is wired in.
+		// IMPORTANT: do NOT use f.state directly if you want each batch to
+		// have its own fresh overlay; build a new one per batch and discard it.
 
-
-		
 		time.Sleep(f.cfg.PollInterval)
 	}
 }
