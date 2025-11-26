@@ -334,8 +334,11 @@ func TestOverlay_EndToEnd_StateAndStorage(t *testing.T) {
 	}
 
 	// Internal path (siblings) should differ as well, indicating intermediate
-	// hashes have changed.
-	if reflect.DeepEqual(baseProof.Siblings, overlayProof.Siblings) {
+	// hashes have changed. Use AllSiblings() because Proof.siblings is unexported.
+	baseSibs := baseProof.AllSiblings()
+	overlaySibs := overlayProof.AllSiblings()
+	if reflect.DeepEqual(baseSibs, overlaySibs) {
 		t.Fatalf("siblings for vertex 3 proof are identical, want different")
 	}
+
 }
