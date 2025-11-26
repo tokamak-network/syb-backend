@@ -46,27 +46,25 @@ func keyToStr(key []byte) string {
 // GetRoot returns the overlay root if set; otherwise it lazily fetches the
 // base root, caches it, and returns that. It never writes back to the base.
 func (o *OverlayStorage) GetRoot(ctx context.Context) (*mt.Hash, error) {
-	o.mu.RLock()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	// Fast path: already initialized.
 	if o.rootInit {
-		defer o.mu.RUnlock()
 		return o.root, nil
 	}
-	o.mu.RUnlock()
 
-	// First call: consult base.
+	// Lazy-init from base, only once.
 	baseRoot, err := o.base.GetRoot(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if !o.rootInit {
-		o.root = baseRoot
-		o.rootInit = true
-	}
+	o.root = baseRoot
+	o.rootInit = true
 	return o.root, nil
 }
+
 
 // SetRoot updates only the overlay's notion of the root. It does not call
 // base.SetRoot, so canonical storage is untouched.
