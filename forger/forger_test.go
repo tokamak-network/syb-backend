@@ -271,7 +271,7 @@ func TestOverlay_EndToEnd_StateAndStorage(t *testing.T) {
 		t.Fatalf("overlay neighbors(3) = %v, want [2 4]", overlayNbr3)
 	}
 
-	// Base neighbors of 4: only {3} in overlay, but empty in base.
+	// Base neighbors of 4: only {3,5} in overlay, but empty in base.
 	baseNbr4, err := baseGS.Neighbors(ctx, 4)
 	if err != nil {
 		t.Fatalf("baseGS.Neighbors(4): %v", err)
