@@ -70,12 +70,14 @@ func (s *State) updateGraphLeaf(ctx context.Context, v uint64) error {
 		return err
 	}
 
-	// Build neighbor data [deg, u0, u1, ...] and hash it using the Poseidon-based
-	// NbrHash algorithm defined in hash.go.
-	nbrData := buildNbrDataCompact(nbrs)
-	val := nbrArrayHasher(nbrData) // *big.Int
+	// Build compact [deg, u0, u1, ...] then pad to the fixed length
+	// implied by s.maxDegree, and hash with Poseidon.
+	compact := buildNbrDataCompact(nbrs)
+	padded := padNbrData(compact, s.maxDegree)
+	val := nbrArrayHasher(padded)
 
 	key := new(big.Int).SetUint64(v)
+
 
 	// We dense-initialized the graph tree via NewState/InitGraphTree, so Update
 	// should always find the key. If it ever returns ErrKeyNotFound, that's
