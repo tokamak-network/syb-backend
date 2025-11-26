@@ -14,9 +14,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	mt "github.com/iden3/go-merkletree-sql/v2"
 
-	//mt "github.com/you/syb-backend/merkletree"
-	//"github.com/you/syb-backend/protocol"
+	"syb-backend/protocol"
 )
 
 // Config holds runtime configuration for the synchronizer daemon.
@@ -59,7 +59,7 @@ type Syncer struct {
 // New constructs a Syncer and performs startup:
 //   - dials RPC
 //   - loads protocol.State (graph + score trees)
-//   - initializes graphTree if needed (dense init)
+//   - initializes graphTree if needed (dense init happens inside NewState)
 //   - loads or creates sync_state.json
 func New(ctx context.Context, cfg Config) (*Syncer, error) {
 	if cfg.GraphStorage == nil || cfg.ScoreStorage == nil {
@@ -74,14 +74,25 @@ func New(ctx context.Context, cfg Config) (*Syncer, error) {
 	if cfg.FinalityDepth == 0 {
 		cfg.FinalityDepth = 12
 	}
+	if cfg.StartBlock == 0 {
+		return nil, errors.New("StartBlock must be > 0")
+	}
+	if (cfg.BatchSubmittedTopic == common.Hash{}) {
+		return nil, errors.New("BatchSubmittedTopic must be set")
+	}
 
 	cli, err := ethclient.DialContext(ctx, cfg.RPCURL)
 	if err != nil {
 		return nil, err
 	}
 
-	trees, err := protocol.NewState(ctx,
-		cfg.GraphStorage, cfg.ScoreStorage, cfg.GraphStore, cfg.ProtoConfig)
+	trees, err := protocol.NewState(
+		ctx,
+		cfg.GraphStorage,
+		cfg.ScoreStorage,
+		cfg.GraphStore,
+		cfg.ProtoConfig,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +102,7 @@ func New(ctx context.Context, cfg Config) (*Syncer, error) {
 		return nil, err
 	}
 	if state == nil {
+		// First run: set lastProcessedBlock = START_BLOCK - 1 and create file.
 		state = &SyncState{
 			LastProcessedBlock: cfg.StartBlock - 1,
 		}
@@ -127,6 +139,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 			continue
 		}
 
+		// Don't process blocks too close to the tip (reorg-safe window).
 		if head <= s.cfg.FinalityDepth {
 			time.Sleep(10 * time.Second)
 			continue
@@ -134,8 +147,9 @@ func (s *Syncer) Run(ctx context.Context) error {
 		target := head - s.cfg.FinalityDepth
 
 		if target <= s.state.LastProcessedBlock {
+			// Already synced up to our finality depth.
 			time.Sleep(10 * time.Second)
-			continue
+			continue;
 		}
 
 		from := s.state.LastProcessedBlock + 1
@@ -147,10 +161,12 @@ func (s *Syncer) Run(ctx context.Context) error {
 
 			if err := s.processRange(ctx, from, to); err != nil {
 				log.Printf("[syncer] error processing [%d,%d]: %v\n", from, to, err)
+				// backoff and let the outer loop retry later
 				time.Sleep(10 * time.Second)
 				break
 			}
 
+			// Successfully processed [from..to], update state & persist JSON.
 			s.state.LastProcessedBlock = to
 			if err := saveState(s.cfg.StateFile, &s.state); err != nil {
 				log.Printf("[syncer] error saving state: %v\n", err)
@@ -161,6 +177,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 	}
 }
 
+// processRange fetches and applies BatchSubmitted logs in [from, to].
 func (s *Syncer) processRange(ctx context.Context, from, to uint64) error {
 	log.Printf("[syncer] processing range [%d,%d]\n", from, to)
 
@@ -185,7 +202,13 @@ func (s *Syncer) processRange(ctx context.Context, from, to uint64) error {
 	})
 
 	for _, lg := range logs {
-		if err := s.trees.ApplyBatch(ctx, lg); err != nil {
+		// Decode on-chain log -> protocol.Batch.
+		batch, err := protocol.DecodeBatchFromLog(lg)
+		if err != nil {
+			return err
+		}
+		// Apply to local state trees.
+		if err := s.trees.ApplyBatch(ctx, batch); err != nil {
 			return err
 		}
 	}
@@ -196,6 +219,11 @@ func (s *Syncer) processRange(ctx context.Context, from, to uint64) error {
 // ---- JSON state helpers ----
 
 func loadState(path string) (*SyncState, error) {
+	if path == "" {
+		// No persistence requested.
+		return &SyncState{LastProcessedBlock: 0}, nil
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -211,6 +239,11 @@ func loadState(path string) (*SyncState, error) {
 }
 
 func saveState(path string, st *SyncState) error {
+	if path == "" {
+		// No persistence requested.
+		return nil
+	}
+
 	tmp := path + ".tmp"
 	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
