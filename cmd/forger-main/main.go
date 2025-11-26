@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	_ "github.com/lib/pq"
+	//_ "github.com/lib/pq"
 
-	mt "github.com/tokamak-network/syb-backend/merkletree"
-	"github.com/tokamak-network/syb-backend/graphstore"
-	"github.com/tokamak-network/syb-backend/forger"
-	"github.com/tokamak-network/syb-backend/protocol"
+	//mt "github.com/tokamak-network/syb-backend/merkletree"
+	//"github.com/tokamak-network/syb-backend/graphstore"
+	//"github.com/tokamak-network/syb-backend/forger"
+	//"github.com/tokamak-network/syb-backend/protocol"
 )
 
 func main() {
