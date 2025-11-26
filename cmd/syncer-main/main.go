@@ -9,12 +9,12 @@ import (
 	"syscall"
 
 	"github.com/ethereum/go-ethereum/common"
-	_ "github.com/lib/pq" // or your DB driver
+	//_ "github.com/lib/pq" // or your DB driver
 
-	mt "github.com/you/syb-backend/merkletree"
-	"github.com/you/syb-backend/graphstore"
-	"github.com/you/syb-backend/protocol"
-	"github.com/you/syb-backend/syncer"
+	//mt "github.com/you/syb-backend/merkletree"
+	//"github.com/you/syb-backend/graphstore"
+	//"github.com/you/syb-backend/protocol"
+	//"github.com/you/syb-backend/syncer"
 )
 
 func main() {
