@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	mt "github.com/iden3/go-merkletree-sql/v2"
 
@@ -149,7 +148,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 		if target <= s.state.LastProcessedBlock {
 			// Already synced up to our finality depth.
 			time.Sleep(10 * time.Second)
-			continue;
+			continue
 		}
 
 		from := s.state.LastProcessedBlock + 1

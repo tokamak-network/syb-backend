@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	mt "github.com/iden3/go-merkletree-sql/v2"
@@ -80,9 +79,9 @@ func main() {
 	var scoreStorage mt.Storage = mtmem.NewMemoryStorage()
 
 	protoCfg := protocol.Config{
-		NumLevels: 24,        // depth D
-		NumLeaves: 1 << 24,   // N = 2^D (your logical "max nodes")
-		MaxDegree: 30,        // maxDeg from your spec
+		NumLevels: 24,      // depth D
+		NumLeaves: 1 << 24, // N = 2^D (your logical "max nodes")
+		MaxDegree: 30,      // maxDeg from your spec
 	}
 
 	cfg := syncer.Config{
@@ -90,8 +89,8 @@ func main() {
 		ContractAddress: contractAddr,
 
 		StartBlock:    startBlock,
-		FinalityDepth: 12,    // example
-		ChunkSize:     5000,  // example
+		FinalityDepth: 12,   // example
+		ChunkSize:     5000, // example
 		StateFile:     "sync_state.json",
 
 		ProtoConfig: protoCfg,
