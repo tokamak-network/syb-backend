@@ -14,6 +14,7 @@ type Config struct {
 	NumLevels int    // Merkle tree depth (D)
 	NumLeaves uint64 // how many dense leaves to pre-init (N = 2^D)
 	MaxDegree uint64 // max neighbors per node (maxDeg)
+	ValidateRoots bool // if true, validate roots after ApplyBatch
 }
 
 // State wraps the two Merkle trees (GraphTree + ScoreTree)
@@ -26,6 +27,7 @@ type State struct {
 	maxDegree uint64
 	padLen    int // padLen = 1 + 15 * numRounds
 	numRounds int // numRounds = (padLen-1)/15
+	validateRoots bool // if true, validate roots after ApplyBatch
 }
 
 // NewState constructs graphTree + scoreTree on top of the given storages
@@ -73,6 +75,7 @@ func NewState(
 		maxDegree: cfg.MaxDegree,
 		padLen:    padLen,
 		numRounds: numRounds,
+		validateRoots: cfg.ValidateRoots,
 	}
 
 	// If graphTree is fresh, run dense init.
