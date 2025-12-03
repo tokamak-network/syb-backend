@@ -98,9 +98,14 @@ func nbrArrayHasher(nbrData []uint64) *big.Int {
 	// We'll reuse the same slice for each round.
 	block := make([]*big.Int, 16)
 
+	// Pre-allocate all big.Int objects ONCE
+	for i := range block {
+		block[i] = new(big.Int)
+	}
+
 	// ----- Round 0: B0 = [deg, u0..u14] -----
 	for i := 0; i < 16; i++ {
-		block[i] = new(big.Int).SetUint64(nbrData[i])
+		block[i] = block[i].SetUint64(nbrData[i]) // Reuse, no new allocation
 	}
 	acc, err := poseidon.Hash(block) // Poseidon_16 over 16 inputs
 	if err != nil {
@@ -125,7 +130,7 @@ func nbrArrayHasher(nbrData []uint64) *big.Int {
 		for j := 1; j < 16; j++ {
 			idx := offset + (j - 1)
 			if idx < padLen {
-				block[j] = new(big.Int).SetUint64(nbrData[idx])
+				block[j] = block[j].SetUint64(nbrData[idx]) // Reuse, no new allocation
 			} else {
 				// Should not happen if padLen is correct, but be defensive.
 				block[j] = big.NewInt(0)

@@ -218,3 +218,75 @@ func TestApplyBatch_UsesApplyEdge(t *testing.T) {
 	checkLeaf(2, []uint64{1, 3})
 	checkLeaf(3, []uint64{2})
 }
+
+// TestApplyEdge_RejectsMaxDegree tests that ApplyEdge rejects when a vertex is at maxDegree.
+func TestApplyEdge_RejectsMaxDegree(t *testing.T) {
+	ctx := context.Background()
+
+	graphStorage := mtmem.NewMemoryStorage()
+	scoreStorage := mtmem.NewMemoryStorage()
+	gs := newTestGraphStore()
+
+	cfg := Config{
+		NumLevels: 5,
+		NumLeaves: 16,
+		MaxDegree: 2, // Small maxDegree for testing
+	}
+
+	st, err := NewState(ctx, graphStorage, scoreStorage, gs, cfg)
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
+	}
+
+	// Fill vertex 1 to maxDegree: add edges {1,2}, {1,3}
+	if err := st.ApplyEdge(ctx, 1, 2); err != nil {
+		t.Fatalf("ApplyEdge(1,2): %v", err)
+	}
+	if err := st.ApplyEdge(ctx, 1, 3); err != nil {
+		t.Fatalf("ApplyEdge(1,3): %v", err)
+	}
+
+	// Try to add a new edge that would exceed maxDegree
+	err = st.ApplyEdge(ctx, 1, 4)
+	if err == nil {
+		t.Fatalf("ApplyEdge(1,4) should fail when vertex 1 is at maxDegree")
+	}
+}
+
+// TestApplyBatch_ValidatesRoots tests that root validation works when enabled.
+func TestApplyBatch_ValidatesRoots(t *testing.T) {
+	ctx := context.Background()
+
+	graphStorage := mtmem.NewMemoryStorage()
+	scoreStorage := mtmem.NewMemoryStorage()
+	gs := newTestGraphStore()
+
+	cfg := Config{
+		NumLevels:     5,
+		NumLeaves:     16,
+		MaxDegree:     30,
+		ValidateRoots: true, // Enable validation
+	}
+
+	st, err := NewState(ctx, graphStorage, scoreStorage, gs, cfg)
+	if err != nil {
+		t.Fatalf("NewState: %v", err)
+	}
+
+	// Create batch with wrong expected roots
+	b := &Batch{
+		BatchID: 1,
+		Count:   1,
+		Edges: []Edge{
+			{Ilo: 1, Ihi: 2},
+		},
+		NewGraphRoot: [32]byte{0xFF}, // Wrong root
+		NewScoreRoot: [32]byte{0xFF}, // Wrong root
+	}
+
+	// Should fail because roots don't match
+	err = st.ApplyBatch(ctx, b)
+	if err == nil {
+		t.Fatalf("ApplyBatch should fail with mismatched roots")
+	}
+}

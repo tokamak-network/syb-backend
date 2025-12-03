@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"bytes"
 )
 
 // ApplyBatch applies a decoded Batch to the off-chain state:
@@ -28,6 +29,17 @@ func (s *State) ApplyBatch(ctx context.Context, b *Batch) error {
 	// TODO (optional): compare s.Graph.Root() / s.Score.Root() with
 	// b.NewGraphRoot / b.NewScoreRoot for sanity checks.
 
+	// Optional: validate roots after ApplyBatch
+	if s.validateRoots {
+		computedGraphRoot := s.Graph.Root()
+		computedScoreRoot := s.Score.Root()
+		if !bytes.Equal(computedGraphRoot[:], b.NewGraphRoot[:]) {
+			return fmt.Errorf("graph root mismatch: computed %x, expected %x", computedGraphRoot, b.NewGraphRoot)
+		}
+		if !bytes.Equal(computedScoreRoot[:], b.NewScoreRoot[:]) {
+			return fmt.Errorf("score root mismatch: computed %x, expected %x", computedScoreRoot, b.NewScoreRoot)
+		}
+	}
 	return nil
 }
 
@@ -45,6 +57,24 @@ func (s *State) applyGraphEdge(ctx context.Context, u, v uint64) error {
 	if s.GraphStore == nil {
 		return fmt.Errorf("protocol: applyGraphEdge: nil State.GraphStore")
 	}
+	// Check if adding edge would exceed maxDegree for u
+    nbrsU, err := s.GraphStore.Neighbors(ctx, u)
+    if err != nil {
+        return fmt.Errorf("checking neighbors of %d: %w", u, err)
+    }
+    if uint64(len(nbrsU)) >= s.maxDegree {
+        return fmt.Errorf("vertex %d already has max degree %d", u, s.maxDegree)
+    }
+
+	// Check if adding edge would exceed maxDegree for v
+	nbrsV, err := s.GraphStore.Neighbors(ctx, v)
+	if err != nil {
+		return fmt.Errorf("checking neighbors of %d: %w", v, err) 
+	}
+	if uint64(len(nbrsV)) >= s.maxDegree {
+		return fmt.Errorf("vertex %d already has max degree %d", v, s.maxDegree)
+	}
+
 	if err := s.GraphStore.AddEdge(ctx, u, v); err != nil {
 		return fmt.Errorf("AddEdge(%d,%d): %w", u, v, err)
 	}
